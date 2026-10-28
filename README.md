@@ -114,7 +114,7 @@ curl http://127.0.0.1:8000/health
 | 所有依赖登录的接口返回 **429 熔断** | 24 小时内登录失败达阈值，进入 30 分钟强制冷静期 | 先修正凭证再等冷却，**不要反复调用**。`GET /health` 的 `warning` 字段会直说原因 |
 | `reverse` / `traffic-keywords` 的 `source` 字段为 `aba-reverse` | 官网「关键词反查」(`/v2/keyword-reverse/.../more`) 对当前试用账号恒定返回空结果（`total=0, items=[]`，HTTP 仍是 200）。已排除参数问题：`station` 路径解析正常（US→GLOBAL、JP→JAPAN、DE→GERMANY 均正确回显），variation 接口也能正常返回变体列表但每个变体 `total` 均为 0，说明是**账号套餐权益**层面的限制（该账号 `valid-pay-status=false`，属试用套餐） | 已做**双通道自动降级**：主通道空时自动切「ABA 出单词反查」，返回体 `source` + `notice` 明示来源与字段差异。换成含该权益的付费账号后，主通道会自动生效，无需改代码 |
 | `checker` 的 `organic_rank` 为 `null` | 网页版「关键词收录检测」是两步式接口（POST 建任务拿 `flag` → 轮询 `result/{flag}`），且 `/v2/keyword-checker/*` 子路由在该账号下直接 404，无法稳定抓取 | 已改为**反查命中判定**：拉该 ASIN 全部曝光词后逐一比对传入词，命中即「已收录」，每个词的判定依据写在 `evidence` 字段 |
-| `tracking/*` 返回 0 条 | 该账号网页端还没添加任何监控对象；**且该模块尚未用真实数据验收** | 在网页端添加后可读取。已加表头健全性校验：若拿到的表不是该模块的表（官网 `product-tracking` 有时会回关键词监控的列），直接返回 `notice` 拒绝解析，不输出错位数据 |
+| `tracking/*` 返回 0 条 | 该账号网页端还没添加任何监控对象；**且该模块尚未用真实数据验收** | 在网页端添加后可读取。**2026-10-28 离线分析存档页面发现更严重的问题**：`product-tracking` / `keyword-tracking` 页的 `<table>` 里装的是前端模板占位符（`{{each(i, k) keywords_list}}`、`{{if k.status == 'O'}}`），说明无监控对象时服务端不渲染数据行；`store-tracking` 页甚至没有任何 `<table>`。因此「表头驱动解析」在跟踪模块上尚未被真正验证，需用 `tests/verify_all.py --diag` 在**已有监控对象**的账号上确认是走 HTML 还是必须改抓 JSON 接口 |
 | `size` 参数对官网无效 | 卖家精灵固定返回整页（50 条） | 已改为本地截断，行为符合预期 |
 
 ---
@@ -130,6 +130,53 @@ curl http://127.0.0.1:8000/health
 | 选产品端点少了 `/monthly` | `/v2/product-research` 只是入口页，永远没有数据 | 真实端点 `GET /v2/product-research/monthly`，且必须带 `nodeIdPath`（冒号分隔完整路径），只传 `nodeId` 无效 |
 | `<tr>` 未正确嵌套 `<tbody>` | BeautifulSoup 遍历 tbody 只能拿到 1 行商品 | 新增 `parser.extract_rows_loose()`，正则扫全文 `<tr>` 再逐 td 重建 DOM，稳定拿 20~50 条 |
 | 选市场的深度指标整行丢失 | 毛利率/中国卖家占比/A+ 占比全变 `null` | 「完整市场路径」展开行是 `<td colspan="15">` 单单元格，`min_cells` 阈值必须放到 1；`nodeIdPath` 只存在于 `<a href>` 里，纯文本取不到，要读 DOM |
+
+---
+
+## 五之三、短期会员（如 1 天卡）验收规程
+
+会员有效期很短时，**每一次登录、每一个请求都是稀缺资源**。请严格按下面顺序操作，
+避免"验证到一半账号到期/被锁"。
+
+### 第 0 步：网页端先造数据（关键，只需 1 分钟）
+
+`tracking/*` 三个接口读的是**你在网页端已建立的监控对象**，账号是空的话接口必然返回 0 条，
+届时无法判断是「解析坏了」还是「本来就没数据」。所以在给凭据之前，先用浏览器登录
+[sellersprite.com](https://www.sellersprite.com) 手动添加：
+
+- 产品监控里加 **1 个 ASIN**（随便挑个在售商品）
+- 关键词监控里加 **1 个关键词**
+- 店铺监控里加 **1 个店铺**（需要店铺 ID）
+
+### 第 1 步：配置凭证并启动
+
+```bash
+# 把新账密写进 config.json 的 sellersprite.account / password
+python -m uvicorn src.api.server:app --host 127.0.0.1 --port 8000
+```
+
+### 第 2 步：一次性全量验收（含跟踪页诊断）
+
+```bash
+python tests/verify_all.py --diag
+```
+
+这个脚本的设计目标就是「不浪费额度」：
+
+| 机制 | 说明 |
+|---|---|
+| **只登录 1 次** | 全部 17 个用例都打到本地服务，共用同一份 Cookie 缓存 |
+| **遇 429 / 503 立即停手** | 不带着坏凭证继续重试，避免把账号撞锁 |
+| **纯本地接口单独放行** | 熔断状态下仍会跑利润计算器 / 销量预测（它们不消耗额度） |
+| **结果落盘** | `data/verify_report_<时间戳>.md`，事后复盘不用再登录 |
+| **`--diag` 存档原始页面** | 把三个监控页原样存到 `data/debug/diag_*.html` 并统计 `data-item-id` 行数 |
+
+### 第 3 步：看 `--diag` 的判定
+
+诊断会明确告诉你跟踪模块该走哪条路：
+
+- 「**服务端已渲染真实数据行**」→ 现有 HTML 解析可用，只需对齐列名；
+- 「**无数据行**」→ 说明是前端渲染，必须改抓 JSON 接口（届时把 `diag_*.html` 给我即可）。
 
 ---
 

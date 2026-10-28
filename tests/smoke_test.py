@@ -47,7 +47,9 @@ def main():
     h = call("/health")
     if h.get("status") == "ok":
         show("服务健康", True,
-             f"账号 {h.get('account')} / Cookie 有效={h.get('cookie_cache_valid')} / 限流 {h.get('rate_limit')}")
+             f"账号 {h.get('account')} / 缓存凭证={h.get('has_cached_token')} / 限流 {h.get('rate_limit')}")
+        if (h.get("login_fuse") or {}).get("tripped"):
+            print(f"     ⚠️ 登录熔断中：{str(h['login_fuse'].get('last_reason'))[:120]}")
     else:
         show("服务健康", False, str(h))
         print("\n服务未启动，请先运行 start.bat 或 start.sh")
