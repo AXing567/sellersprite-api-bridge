@@ -152,8 +152,16 @@ curl http://127.0.0.1:8000/health
 
 ```bash
 # 把新账密写进 config.json 的 sellersprite.account / password
+
+# 如果之前用错误凭证失败过，先把本地熔断计数清掉（只删本地状态，不联网、不碰账号）
+python tests/verify_all.py --reset-fuse
+
 python -m uvicorn src.api.server:app --host 127.0.0.1 --port 8000
 ```
+
+> 为什么必须先清熔断：熔断逻辑是「24 小时内失败 ≥3 次 → 冷却 30 分钟」。
+> 换新密码后旧计数仍会累计，第一次尝试只是"谨慎放行一次"，
+> 万一那一次再有闪失败就直接吃掉 30 分钟冷却 —— 对 1 天卡是致命浪费。
 
 ### 第 2 步：一次性全量验收（含跟踪页诊断）
 

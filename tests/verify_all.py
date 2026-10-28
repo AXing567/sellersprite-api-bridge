@@ -13,6 +13,7 @@
     python tests/verify_all.py            # 跑全部 17 个接口
     python tests/verify_all.py --only tracking
     python tests/verify_all.py --diag     # 额外做监控页渲染诊断（复用缓存 Cookie，不重新登录）
+    python tests/verify_all.py --reset-fuse   # 换了新凭证后，先清掉本地熔断计数
 
 前置条件
 --------
@@ -317,6 +318,21 @@ def diag_tracking_pages():
     return rows
 
 
+def reset_fuse() -> None:
+    """清除本地登录熔断状态。
+
+    只删本地 data/login_guard.json，不碰账号、不联网。
+    适用场景：**更换了正确凭证之后**——旧的失败计数属于上一组错误密码，
+    继续累计会让新密码的第一次尝试被"谨慎放行"，一旦再有闪失败就吃掉 30 分钟冷却。
+    """
+    p = ROOT / "data" / "login_guard.json"
+    if p.exists():
+        p.unlink()
+        print(f"已清除本地熔断状态：{p.name}")
+    else:
+        print("本地无熔断状态，无需清除。")
+
+
 def main():
     args = sys.argv[1:]
     only = None
@@ -324,6 +340,9 @@ def main():
         i = args.index("--only")
         only = args[i + 1] if i + 1 < len(args) else None
     do_diag = "--diag" in args
+
+    if "--reset-fuse" in args:
+        reset_fuse()
 
     print("=" * 72)
     print("卖家精灵 API —— 一次性全量验收")
