@@ -1,0 +1,35 @@
+# 真实配置（含账号密码），禁止提交
+config.json
+**/config.json
+
+# 会话缓存与调试产物
+data/
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 日志
+*.log
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 本地编辑/Agent 工作目录
+.claude/
+.workbuddy/
+.cursor/
+
+# 环境变量文件
+.env
+.env.*
+
+# 一次性调试快照（含真实页面数据）
+tests/_*.html
+tests/_*.json
+tools/_*

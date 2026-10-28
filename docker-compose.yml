@@ -1,0 +1,15 @@
+services:
+  sellersprite-api:
+    build: .
+    image: sellersprite-api-bridge:1.0.0
+    container_name: sellersprite-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      # 持久化 Cookie 缓存与登录熔断状态，避免容器重建后重新登录触发风控
+      - ./data:/app/data
+      # 挂载真实配置（含账号密码），不要在镜像里内置
+      - ./config.json:/app/config.json:ro

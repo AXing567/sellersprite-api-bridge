@@ -1,0 +1,22 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "sellersprite": {
+    "account": "YOUR_PHONE_OR_EMAIL",
+    "password": "YOUR_PASSWORD",
+    "default_marketplace": "US",
+    "headless": true,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  },
+  "security": {
+    "cookie_cache_path": "data/session_cookies.json",
+    "cookie_ttl_hours": 168,
+    "min_request_interval_seconds": 2.0,
+    "max_request_interval_seconds": 4.0,
+    "max_login_retries_per_day": 3,
+    "login_cooldown_minutes": 30,
+    "enable_request_jitter": true
+  }
+}
